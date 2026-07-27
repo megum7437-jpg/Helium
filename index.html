@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎈 헬륨 & 표준가스 통합관리 v6.6</title>
+    <title>🎈 헬륨 & 표준가스 통합관리 v6.7</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -124,7 +124,7 @@
 <div class="max-width-container">
     <div class="hero">
         <div>
-            <h1>🎈 헬륨 & 표준가스 통합관리 v6.6</h1>
+            <h1>🎈 헬륨 & 표준가스 통합관리 v6.7</h1>
             <div class="subtitle">24개 관리소 실시간 운영현황 · 1 MPa 도달예측 · 교체 우선순위 관리</div>
         </div>
         <div class="hero-actions">
@@ -184,6 +184,14 @@
             <div class="form-group">
                 <label>점검/설치 일자</label>
                 <input type="date" id="checkDate">
+            </div>
+            <div class="form-group" id="activeBottleWrap">
+                <label>현재 사용 중인 헬륨 용기</label>
+                <select id="activeBottleSelect" onchange="changeActiveBottle()">
+                    <option value="A">1번(A) 용기 사용 중</option>
+                    <option value="B">2번(B) 용기 사용 중</option>
+                </select>
+                <div style="font-size:12px;color:#64748b;margin-top:5px;">교체예정일·D-Day·우선순위는 사용 중 용기를 기준으로 계산합니다.</div>
             </div>
             <div class="form-group" id="targetBottleWrap">
                 <label>입력 대상 선택</label>
@@ -277,7 +285,7 @@
             opt.value = st; opt.textContent = st;
             select.appendChild(opt);
             // 기본 구조 세팅 (A통, B통, 표준가스 이력 분리)
-            localDB[st] = { analyzer: "RMG", historyA: [], historyB: [], historyS: [] };
+            localDB[st] = { analyzer: "RMG", activeBottle: "A", historyA: [], historyB: [], historyS: [] };
         });
         document.getElementById('checkDate').value = new Date().toISOString().split('T')[0];
         
@@ -288,7 +296,7 @@
         if(db) {
             db.onSnapshot((snapshot) => {
                 snapshot.forEach((doc) => {
-                    if (localDB[doc.id]) localDB[doc.id] = doc.data();
+                    if (localDB[doc.id]) { localDB[doc.id] = doc.data(); if(!localDB[doc.id].activeBottle) localDB[doc.id].activeBottle = "A"; }
                 });
                 updateUI();
                 loadDetails();
@@ -311,26 +319,40 @@
         if(anz === "StandardGas") {
             target.value = "S";
             document.getElementById('pressureGroup').style.display = 'none';
+            document.getElementById('activeBottleWrap').style.display = 'none';
         } else {
             if(target.value === "S") target.value = "A";
             document.getElementById('pressureGroup').style.display = 'block';
+            document.getElementById('activeBottleWrap').style.display = 'block';
         }
         if(db) db.doc(st).set(localDB[st]);
         updateUI();
+    }
+
+    function changeActiveBottle() {
+        const st = document.getElementById('stationSelect').value;
+        localDB[st].activeBottle = document.getElementById('activeBottleSelect').value;
+        const done = () => { updateUI(); loadDetails(); };
+        if(db) db.doc(st).set(localDB[st]).then(done).catch(error => { console.warn(error); alert('사용 중 용기 설정 저장에 실패했습니다.'); });
+        else done();
     }
 
     function loadDetails() {
         const st = document.getElementById('stationSelect').value;
         const data = localDB[st];
         document.getElementById('analyzerSelect').value = data.analyzer;
+        if(!data.activeBottle) data.activeBottle = 'A';
+        document.getElementById('activeBottleSelect').value = data.activeBottle;
         
         const anz = data.analyzer;
         const target = document.getElementById('targetBottle');
         if(anz === "StandardGas") {
             target.value = "S";
             document.getElementById('pressureGroup').style.display = 'none';
+            document.getElementById('activeBottleWrap').style.display = 'none';
         } else {
             document.getElementById('pressureGroup').style.display = 'block';
+            document.getElementById('activeBottleWrap').style.display = 'block';
         }
 
         // 이력 통합 정렬 출력
@@ -501,34 +523,26 @@
 
         const bottleA = getBottleState(data.historyA);
         const bottleB = getBottleState(data.historyB);
-        const activeBottles = [bottleA, bottleB].filter(b => b.hasData);
-        const hasHeliumData = activeBottles.length > 0;
+        const anyHeliumData = bottleA.hasData || bottleB.hasData;
 
-        // 관리소 교체예정일은 A/B 중 먼저 1 MPa에 도달하는 날짜 하나로 확정한다.
-        const heliumPredDate = hasHeliumData
-            ? activeBottles.map(b => b.targetDate).sort()[0]
-            : '-';
+        // 교체 판단은 압력이 낮은 용기가 아니라 현재 사용 중인 용기를 기준으로 한다.
+        const activeBottleCode = data.activeBottle === 'B' ? 'B' : 'A';
+        const standbyBottleCode = activeBottleCode === 'A' ? 'B' : 'A';
+        const activeBottle = activeBottleCode === 'A' ? bottleA : bottleB;
+        const standbyBottle = activeBottleCode === 'A' ? bottleB : bottleA;
+        const hasHeliumData = activeBottle.hasData;
+        const heliumPredDate = hasHeliumData ? activeBottle.targetDate : '-';
+        const heliumDisplayDays = hasHeliumData ? calendarDayDiff(todayKey, heliumPredDate) : 0;
+        const dueBottleLabel = hasHeliumData ? `${activeBottleCode}용기(사용 중)` : `${activeBottleCode}용기 압력 미입력`;
 
-        // 빨간 박스, 목록, 정렬, 필터의 D-Day는 모두 위에서 확정한 같은 날짜만 사용한다.
-        const heliumDisplayDays = hasHeliumData
-            ? calendarDayDiff(todayKey, heliumPredDate)
-            : 0;
-
-        // 관리소 교체예정일을 결정한 용기를 명확히 표시한다.
-        let dueBottleLabel = '-';
-        if(hasHeliumData) {
-            const aIsDue = bottleA.hasData && bottleA.targetDate === heliumPredDate;
-            const bIsDue = bottleB.hasData && bottleB.targetDate === heliumPredDate;
-            if(aIsDue && bIsDue) dueBottleLabel = 'A·B 동시 도달';
-            else if(aIsDue) dueBottleLabel = 'A용기 도달';
-            else if(bIsDue) dueBottleLabel = 'B용기 도달';
-        }
-
-        const usableBottleCount = activeBottles.filter(b => b.days > 0 && b.estimatedPressure > MIN_PRESSURE).length;
-        const usableBottleNames = [
-            bottleA.hasData && bottleA.days > 0 && bottleA.estimatedPressure > MIN_PRESSURE ? 'A' : null,
-            bottleB.hasData && bottleB.days > 0 && bottleB.estimatedPressure > MIN_PRESSURE ? 'B' : null
-        ].filter(Boolean);
+        const standbyUsable = standbyBottle.hasData && standbyBottle.estimatedPressure > MIN_PRESSURE;
+        const standbyStatus = !standbyBottle.hasData
+            ? `${standbyBottleCode}용기 압력 미입력`
+            : standbyUsable
+                ? `${standbyBottleCode}용기 사용 가능 (${standbyBottle.estimatedPressure.toFixed(2)} MPa)`
+                : `${standbyBottleCode}용기 교체 필요 (${standbyBottle.estimatedPressure.toFixed(2)} MPa)`;
+        const usableBottleCount = [bottleA, bottleB].filter(b => b.hasData && b.estimatedPressure > MIN_PRESSURE).length;
+        const usableBottleNames = [bottleA.hasData && bottleA.estimatedPressure > MIN_PRESSURE ? 'A' : null, bottleB.hasData && bottleB.estimatedPressure > MIN_PRESSURE ? 'B' : null].filter(Boolean);
         const replacementDue = hasHeliumData && heliumDisplayDays <= 0;
 
         // 2. 표준가스 수명 연산 (보증 기한 2년 준수 여부)
@@ -550,8 +564,8 @@
         }
 
         return {
-            anz, hasHeliumData, heliumTotalDays: heliumDisplayDays, heliumPredDate, dueBottleLabel,
-            usableBottleCount, usableBottleNames, replacementDue,
+            anz, hasHeliumData, anyHeliumData, heliumTotalDays: heliumDisplayDays, heliumPredDate, dueBottleLabel,
+            activeBottleCode, standbyBottleCode, standbyUsable, standbyStatus, usableBottleCount, usableBottleNames, replacementDue,
             daysA:bottleA.days, daysB:bottleB.days,
             predA:bottleA.targetDate, predB:bottleB.targetDate,
             remainA:bottleA.remainingMpa, remainB:bottleB.remainingMpa,
@@ -591,7 +605,7 @@
                 hAlertBox.style.display = 'block';
                 hAlertList.innerHTML += `<div style="display:flex; justify-content:space-between; padding:2px 0;">
                     <span><b>${item.name}</b> (${item.anz})</span>
-                    <span>⚠️ <b>1 MPa 도달 D-${item.heliumTotalDays}</b> (${item.heliumPredDate}) · ${item.usableBottleCount > 0 ? `사용 가능 ${item.usableBottleNames.join(', ')}` : '사용 가능 용기 없음'}</span>
+                    <span>⚠️ <b>사용 중 ${item.activeBottleCode}용기 D-${item.heliumTotalDays}</b> (${item.heliumPredDate}) · ${item.standbyStatus}</span>
                 </div>`;
             }
             if(item.standardDaysLeft <= 60) {
@@ -635,18 +649,16 @@
                 <div class="station-info" onclick="selectStation('${item.name}')">
                     <div class="station-name"><span class="priority-rank">${rank+1}</span>${item.name} <span class="tag tag-${item.anz}">${item.anz}</span></div>
                     <div class="station-meta">
-                        1번(A): <b>${item.hasHeliumData ? item.estA.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainA.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predA} (D-${item.daysA})<br>
-                        2번(B): <b>${item.hasHeliumData ? item.estB.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainB.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predB} (D-${item.daysB})<br>
-                        관리소 우선 교체예정일: <b>${item.heliumPredDate}</b> ${item.hasHeliumData ? `(D-${item.heliumTotalDays})` : '(압력 기록 필요)'}<br>
-                        ${item.hasHeliumData ? `<span class="due-bottle-note">🎯 기준 용기: <b>${item.dueBottleLabel}</b></span><br>` : ''}
-                        ${item.hasHeliumData ? (item.usableBottleCount > 0
-                            ? `<span class="usable-note">✅ 사용 가능 용기 있음 (${item.usableBottleNames.join(', ')} · ${item.usableBottleCount}개)</span>`
-                            : `<span class="unavailable-note">⛔ 사용 가능 용기 없음</span>`) : ''}<br>
+                        1번(A) ${item.activeBottleCode==='A'?'[사용 중]':'[대기]'}: <b>${item.anyHeliumData ? item.estA.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainA.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predA} (D-${item.daysA})<br>
+                        2번(B) ${item.activeBottleCode==='B'?'[사용 중]':'[대기]'}: <b>${item.anyHeliumData ? item.estB.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainB.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predB} (D-${item.daysB})<br>
+                        사용 중 용기 교체예정일: <b>${item.heliumPredDate}</b> ${item.hasHeliumData ? `(D-${item.heliumTotalDays})` : `(${item.activeBottleCode}용기 압력 기록 필요)`}<br>
+                        <span class="due-bottle-note">▶ 현재 사용 중: <b>${item.activeBottleCode}용기</b></span><br>
+                        <span class="${item.standbyUsable ? 'usable-note' : 'unavailable-note'}">대기 용기: ${item.standbyStatus}</span><br>
                         표준가스 유효기간 만료일: <b>${item.sPredDate}</b>
                     </div>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
-                    <span class="${bClass}">${item.hasHeliumData ? `🎈 D-${item.heliumTotalDays}` : '🎈 미입력'}</span>
+                    <span class="${bClass}">${item.hasHeliumData ? `🎈 ${item.activeBottleCode} D-${item.heliumTotalDays}` : '🎈 미입력'}</span>
                     ${sBadge}
                 </div>
             `;
@@ -677,10 +689,10 @@
 
     function csvSafe(v) { return `"${String(v ?? '').replaceAll('"','""')}"`; }
     function exportCSV() {
-        const rows = [['관리소','분석기','A 최근압력(MPa)','B 최근압력(MPa)','A 잔여(MPa)','B 잔여(MPa)','통합 잔여일','교체예정일','표준가스 만료일']];
+        const rows = [['관리소','분석기','A 최근압력(MPa)','B 최근압력(MPa)','A 잔여(MPa)','B 잔여(MPa)','사용 중 용기','사용 중 용기 잔여일','사용 중 용기 교체예정일','표준가스 만료일']];
         STATIONS.forEach(name => {
             const x=parseCalculation(name);
-            rows.push([name,x.anz,x.pA,x.pB,x.remainA.toFixed(2),x.remainB.toFixed(2),x.hasHeliumData?x.heliumTotalDays:'미입력',x.heliumPredDate,x.sPredDate]);
+            rows.push([name,x.anz,x.pA,x.pB,x.remainA.toFixed(2),x.remainB.toFixed(2),x.activeBottleCode,x.hasHeliumData?x.heliumTotalDays:'미입력',x.heliumPredDate,x.sPredDate]);
         });
         const csv='\uFEFF'+rows.map(r=>r.map(csvSafe).join(',')).join('\r\n');
         const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
