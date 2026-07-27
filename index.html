@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎈 헬륨 & 표준가스 매니저 v5.2</title>
+    <title>🎈 헬륨 & 표준가스 매니저 v5.3</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -77,6 +77,7 @@
         }
         .badge.warning { background-color: #f59e0b; }
         .badge.danger { background-color: #ef4444; }
+        .badge.empty { background-color: #94a3b8; }
         
         .tag { display: inline-block; font-size: 10px; padding: 1px 4px; border-radius: 3px; margin-left: 4px; font-weight: bold; background: #e2e8f0; color: #475569;}
         .tag-StandardGas { background: #e0f2fe; color: #0369a1; }
@@ -90,7 +91,7 @@
 <body>
 
 <div class="max-width-container">
-    <h1>🎈 헬륨 & 표준가스 매니저 v5.2</h1>
+    <h1>🎈 헬륨 & 표준가스 매니저 v5.3</h1>
 
     <div class="card" style="background: #f8fafc; border: 1px solid #cbd5e1;">
         <h2>🔍 실시간 가스 유형별 현황</h2>
@@ -106,7 +107,7 @@
         </div>
         
         <div id="h_alert_box" class="alert-zone alert-h-zone" style="display:none;">
-            <div class="alert-title">🚨 헬륨 교체 필요 관리소 (30일 이내 소진)</div>
+            <div class="alert-title">🚨 헬륨 교체 필요 관리소 (1 MPa 도달 30일 이내)</div>
             <div id="h_alert_list"></div>
         </div>
         <div id="s_alert_box" class="alert-zone alert-s-zone" style="display:none;">
@@ -189,8 +190,16 @@
         appId: "1:1058699154069:web:079d4037b13ac624c1819c",
     };
 
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore().collection("helium_manager_v52");
+    // 외부 스크립트가 차단되더라도 관리소 목록과 화면은 정상 표시
+    let db = null;
+    try {
+        if(typeof firebase !== 'undefined') {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore().collection("helium_manager_v52");
+        }
+    } catch(error) {
+        console.warn("클라우드 연결 실패 - 화면은 로컬 모드로 실행됩니다.", error);
+    }
 
     const STATIONS = [
         "장성", "비아", "하남", "평동", "나주", "함평", "무안", "목포", 
@@ -212,14 +221,21 @@
         });
         document.getElementById('checkDate').value = new Date().toISOString().split('T')[0];
         
-        // 실시간 클라우드 리스너 연동
-        db.onSnapshot((snapshot) => {
-            snapshot.forEach((doc) => {
-                if (localDB[doc.id]) localDB[doc.id] = doc.data();
+        // 클라우드 연결 전에도 기본 화면을 먼저 표시
+        updateUI();
+        loadDetails();
+
+        if(db) {
+            db.onSnapshot((snapshot) => {
+                snapshot.forEach((doc) => {
+                    if (localDB[doc.id]) localDB[doc.id] = doc.data();
+                });
+                updateUI();
+                loadDetails();
+            }, (error) => {
+                console.warn("클라우드 데이터를 불러오지 못했습니다.", error);
             });
-            updateUI();
-            loadDetails();
-        });
+        }
     };
 
     function changeAnalyzer() {
@@ -235,7 +251,8 @@
             if(target.value === "S") target.value = "A";
             document.getElementById('pressureGroup').style.display = 'block';
         }
-        db.doc(st).set(localDB[st]);
+        if(db) db.doc(st).set(localDB[st]);
+        updateUI();
     }
 
     function loadDetails() {
@@ -296,10 +313,22 @@
         if(type === 'B') { if(!localDB[st].historyB) localDB[st].historyB=[]; localDB[st].historyB.push(obj); localDB[st].historyB.sort((a,b)=>new Date(a.date)-new Date(b.date)); }
         if(type === 'S') { if(!localDB[st].historyS) localDB[st].historyS=[]; localDB[st].historyS.push(obj); localDB[st].historyS.sort((a,b)=>new Date(a.date)-new Date(b.date)); }
 
-        db.doc(st).set(localDB[st]).then(() => {
+        const afterSave = () => {
             document.getElementById('pressure').value = '';
             document.getElementById('isReplace').checked = false;
-        });
+            updateUI();
+            loadDetails();
+        };
+
+        if(db) {
+            db.doc(st).set(localDB[st]).then(afterSave).catch(error => {
+                console.warn("클라우드 저장 실패", error);
+                alert("클라우드 저장에 실패했습니다. 인터넷 연결을 확인해 주세요.");
+            });
+        } else {
+            afterSave();
+            alert("클라우드에 연결되지 않아 현재 화면에서만 기록되었습니다.");
+        }
     }
 
     function deleteItem(st, origin, idx) {
@@ -307,42 +336,94 @@
         if(origin === 'A') localDB[st].historyA.splice(idx, 1);
         if(origin === 'B') localDB[st].historyB.splice(idx, 1);
         if(origin === 'S') localDB[st].historyS.splice(idx, 1);
-        db.doc(st).set(localDB[st]);
+        if(db) db.doc(st).set(localDB[st]);
+        updateUI();
+        loadDetails();
     }
 
-    // 병렬 헬륨 추적 및 표준가스 디데이 연산 매커니즘
+    // v5.3: 1 MPa 최소운전압력 기준 병렬 헬륨 추적 및 표준가스 D-Day 연산
     function parseCalculation(st) {
         const data = localDB[st];
         const anz = data.analyzer;
         const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const DAY_MS = 1000 * 60 * 60 * 24;
+        const MIN_PRESSURE = 1.0;
         
         let maxDays = anz === "Emerson" ? 90 : 365;
-        let defRate = 14.0 / maxDays;
+        // 새 용기 14 MPa에서 최소운전압력 1 MPa까지의 기본 소진율
+        let defRate = (14.0 - MIN_PRESSURE) / maxDays;
 
-        // 1. 헬륨 연산 함수 (각 통별 남은 일수 산정)
-        function getBottleDays(history) {
-            if(!history || history.length === 0) return 0;
+        function toLocalDate(dateString) {
+            const [y, m, d] = dateString.split('-').map(Number);
+            return new Date(y, m - 1, d);
+        }
+
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function addDays(baseDate, days) {
+            const result = new Date(baseDate);
+            result.setDate(result.getDate() + Math.max(0, days));
+            return formatDate(result);
+        }
+
+        // 각 용기의 현재 추정압력, 소진율, 1 MPa 도달 잔여일 계산
+        function getBottleState(history) {
+            if(!history || history.length === 0) {
+                return { hasData:false, days:0, pressure:0, remainingMpa:0, rate:0, targetDate:'-' };
+            }
             let valid = [...history];
             const lastR = history.map(h=>h.isReplace).lastIndexOf(true);
             if(lastR !== -1) valid = history.slice(lastR);
 
             const latest = valid[valid.length - 1];
-            if(valid.length < 2) {
-                return Math.max(0, Math.round((latest.pressure / 14.0) * maxDays));
-            }
-            const d1 = new Date(valid[0].date), d2 = new Date(latest.date);
-            const gap = Math.ceil(Math.abs(d2 - d1) / (1000*60*60*24));
             let rate = defRate;
-            if(gap > 0 && valid[0].pressure > latest.pressure) {
-                rate = (valid[0].pressure - latest.pressure) / gap;
+            if(valid.length >= 2) {
+                // 가장 최근의 유효한 두 측정값으로 실제 소진율 반영
+                for(let i = valid.length - 2; i >= 0; i--) {
+                    const prev = valid[i];
+                    const gap = Math.round((toLocalDate(latest.date) - toLocalDate(prev.date)) / DAY_MS);
+                    if(gap > 0 && Number(prev.pressure) > Number(latest.pressure)) {
+                        rate = (Number(prev.pressure) - Number(latest.pressure)) / gap;
+                        break;
+                    }
+                }
             }
-            return Math.min(maxDays, Math.max(0, Math.round(latest.pressure / rate)));
+
+            const elapsed = Math.max(0, Math.floor((today - toLocalDate(latest.date)) / DAY_MS));
+            const estimatedPressure = Math.max(MIN_PRESSURE, Number(latest.pressure) - rate * elapsed);
+            const remainingMpa = Math.max(0, estimatedPressure - MIN_PRESSURE);
+            const days = Math.max(0, Math.ceil(remainingMpa / rate));
+
+            return {
+                hasData:true,
+                days,
+                pressure:Number(latest.pressure),
+                estimatedPressure,
+                remainingMpa,
+                rate,
+                targetDate:addDays(today, days)
+            };
         }
 
-        const daysA = getBottleDays(data.historyA);
-        const daysB = getBottleDays(data.historyB);
-        // 병렬 운영: 두 용기의 잔여 수명을 합산하여 최종 버팀 기간 산정
-        const heliumTotalDays = daysA + daysB; 
+        const bottleA = getBottleState(data.historyA);
+        const bottleB = getBottleState(data.historyB);
+        const activeBottles = [bottleA, bottleB].filter(b => b.hasData);
+        const hasHeliumData = activeBottles.length > 0;
+
+        // 병렬운전은 두 용기가 동시에 소모되므로 잔여일을 단순 합산하지 않는다.
+        // 전체 잔여압력 합계를 전체 소진율 합계로 나누어 1 MPa 도달일을 산정한다.
+        const totalRemainingMpa = activeBottles.reduce((sum, b) => sum + b.remainingMpa, 0);
+        const totalRate = activeBottles.reduce((sum, b) => sum + b.rate, 0);
+        const heliumTotalDays = hasHeliumData && totalRate > 0
+            ? Math.max(0, Math.ceil(totalRemainingMpa / totalRate))
+            : 0;
+        const heliumPredDate = hasHeliumData ? addDays(today, heliumTotalDays) : '-';
 
         // 2. 표준가스 수명 연산 (보증 기한 2년 준수 여부)
         let standardDaysLeft = 730;
@@ -350,22 +431,25 @@
         if(data.historyS && data.historyS.length > 0) {
             const lastR = data.historyS.map(h=>h.isReplace).lastIndexOf(true);
             const basePoint = data.historyS[lastR !== -1 ? lastR : 0];
-            const installD = new Date(basePoint.date);
-            const elapsed = Math.floor((today - installD) / (1000*60*60*24));
+            const installD = toLocalDate(basePoint.date);
+            const elapsed = Math.floor((today - installD) / DAY_MS);
             standardDaysLeft = Math.max(0, 730 - elapsed);
             
             const targetD = new Date(installD);
             targetD.setDate(targetD.getDate() + 730);
-            sPredDate = targetD.toISOString().split('T')[0];
+            sPredDate = formatDate(targetD);
         } else {
             const targetD = new Date(); targetD.setDate(targetD.getDate() + 730);
-            sPredDate = targetD.toISOString().split('T')[0];
+            sPredDate = formatDate(targetD);
         }
 
         return {
-            anz, heliumTotalDays, daysA, daysB, standardDaysLeft, sPredDate,
-            pA: data.historyA && data.historyA.length > 0 ? data.historyA[data.historyA.length-1].pressure : 0,
-            pB: data.historyB && data.historyB.length > 0 ? data.historyB[data.historyB.length-1].pressure : 0
+            anz, hasHeliumData, heliumTotalDays, heliumPredDate,
+            daysA:bottleA.days, daysB:bottleB.days,
+            predA:bottleA.targetDate, predB:bottleB.targetDate,
+            remainA:bottleA.remainingMpa, remainB:bottleB.remainingMpa,
+            standardDaysLeft, sPredDate,
+            pA:bottleA.pressure, pB:bottleB.pressure
         };
     }
 
@@ -383,15 +467,15 @@
 
         // 알림 판단 및 대시보드 스코어 집계
         listArr.forEach(item => {
-            if(item.heliumTotalDays > 30) hOk++;
+            if(item.hasHeliumData && item.heliumTotalDays > 30) hOk++;
             if(item.standardDaysLeft > 60) sOk++;
 
             // 긴급 인덱스 자동 표출 조건문
-            if(item.heliumTotalDays <= 30) {
+            if(item.hasHeliumData && item.heliumTotalDays <= 30) {
                 hAlertBox.style.display = 'block';
                 hAlertList.innerHTML += `<div style="display:flex; justify-content:space-between; padding:2px 0;">
                     <span><b>${item.name}</b> (${item.anz})</span>
-                    <span>⚠️ <b>${item.heliumTotalDays}일 남음</b> (1번:${item.daysA}일 / 2번:${item.daysB}일)</span>
+                    <span>⚠️ <b>1 MPa 도달 D-${item.heliumTotalDays}</b> (${item.heliumPredDate})</span>
                 </div>`;
             }
             if(item.standardDaysLeft <= 60) {
@@ -409,15 +493,19 @@
         document.getElementById('h_dash').textContent = `${hOk} / 24 관리소`;
         document.getElementById('s_dash').textContent = `${sOk} / 24 관리소`;
 
-        // 리스트 정렬 (소진일이 짧은 순서대로 정렬)
-        listArr.sort((a,b) => a.heliumTotalDays - b.heliumTotalDays);
+        // 1 MPa 도달 예정일이 빠른 관리소 순, 미입력 관리소는 마지막
+        listArr.sort((a,b) => {
+            if(a.hasHeliumData !== b.hasHeliumData) return a.hasHeliumData ? -1 : 1;
+            return a.heliumTotalDays - b.heliumTotalDays;
+        });
 
         listArr.forEach(item => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'station-item';
             
             let bClass = 'badge';
-            if(item.heliumTotalDays <= 15) bClass += ' danger';
+            if(!item.hasHeliumData) bClass += ' empty';
+            else if(item.heliumTotalDays <= 15) bClass += ' danger';
             else if(item.heliumTotalDays <= 30) bClass += ' warning';
 
             let sBadge = `<span class="badge ${item.standardDaysLeft <= 60 ? (item.standardDaysLeft<=30?'danger':'warning') : ''}" style="min-width:50px; font-size:11px;">🧪 표준:${item.standardDaysLeft}일</span>`;
@@ -426,12 +514,14 @@
                 <div class="station-info" onclick="selectStation('${item.name}')">
                     <div class="station-name">${item.name} <span class="tag tag-${item.anz}">${item.anz}</span></div>
                     <div class="station-meta">
-                        1번(A): <b>${item.pA} MPa</b> (${item.daysA}일) / 2번(B): <b>${item.pB} MPa</b> (${item.daysB}일)<br>
+                        1번(A): <b>${item.pA} MPa</b> · 잔여 ${item.remainA.toFixed(2)} MPa · 1 MPa 도달 ${item.predA} (D-${item.daysA})<br>
+                        2번(B): <b>${item.pB} MPa</b> · 잔여 ${item.remainB.toFixed(2)} MPa · 1 MPa 도달 ${item.predB} (D-${item.daysB})<br>
+                        관리소 교체예정일: <b>${item.heliumPredDate}</b> ${item.hasHeliumData ? `(D-${item.heliumTotalDays})` : '(압력 기록 필요)'}<br>
                         표준가스 유효기간 만료일: <b>${item.sPredDate}</b>
                     </div>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
-                    <span class="${bClass}">🎈 합산 ${item.heliumTotalDays}일</span>
+                    <span class="${bClass}">${item.hasHeliumData ? `🎈 D-${item.heliumTotalDays}` : '🎈 미입력'}</span>
                     ${sBadge}
                 </div>
             `;
@@ -446,6 +536,11 @@
     }
 
     function drawChart(st) {
+        if(typeof Chart === 'undefined') {
+            document.querySelector('.chart-wrap').style.display = 'none';
+            return;
+        }
+        document.querySelector('.chart-wrap').style.display = 'block';
         const ctx = document.getElementById('historyChart').getContext('2d');
         if(mainChart) mainChart.destroy();
 
