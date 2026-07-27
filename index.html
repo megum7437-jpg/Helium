@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎈 헬륨 & 표준가스 통합관리 v6.5</title>
+    <title>🎈 헬륨 & 표준가스 통합관리 v6.6</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -111,6 +111,7 @@
         .ops-item:last-child { border-bottom:none; }
         .quick-actions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
         .btn-light { background:#e2e8f0; color:#1e293b; }
+        .due-bottle-note{display:inline-block;margin-top:3px;color:#7c3aed;font-weight:700;}
         .usable-note { color:#047857; font-weight:700; }
         .unavailable-note { color:#b91c1c; font-weight:700; }
         .today-chip { display:inline-block; padding:3px 7px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-size:11px; font-weight:bold; }
@@ -123,7 +124,7 @@
 <div class="max-width-container">
     <div class="hero">
         <div>
-            <h1>🎈 헬륨 & 표준가스 통합관리 v6.5</h1>
+            <h1>🎈 헬륨 & 표준가스 통합관리 v6.6</h1>
             <div class="subtitle">24개 관리소 실시간 운영현황 · 1 MPa 도달예측 · 교체 우선순위 관리</div>
         </div>
         <div class="hero-actions">
@@ -513,6 +514,16 @@
             ? calendarDayDiff(todayKey, heliumPredDate)
             : 0;
 
+        // 관리소 교체예정일을 결정한 용기를 명확히 표시한다.
+        let dueBottleLabel = '-';
+        if(hasHeliumData) {
+            const aIsDue = bottleA.hasData && bottleA.targetDate === heliumPredDate;
+            const bIsDue = bottleB.hasData && bottleB.targetDate === heliumPredDate;
+            if(aIsDue && bIsDue) dueBottleLabel = 'A·B 동시 도달';
+            else if(aIsDue) dueBottleLabel = 'A용기 도달';
+            else if(bIsDue) dueBottleLabel = 'B용기 도달';
+        }
+
         const usableBottleCount = activeBottles.filter(b => b.days > 0 && b.estimatedPressure > MIN_PRESSURE).length;
         const usableBottleNames = [
             bottleA.hasData && bottleA.days > 0 && bottleA.estimatedPressure > MIN_PRESSURE ? 'A' : null,
@@ -539,7 +550,7 @@
         }
 
         return {
-            anz, hasHeliumData, heliumTotalDays: heliumDisplayDays, heliumPredDate,
+            anz, hasHeliumData, heliumTotalDays: heliumDisplayDays, heliumPredDate, dueBottleLabel,
             usableBottleCount, usableBottleNames, replacementDue,
             daysA:bottleA.days, daysB:bottleB.days,
             predA:bottleA.targetDate, predB:bottleB.targetDate,
@@ -627,6 +638,7 @@
                         1번(A): <b>${item.hasHeliumData ? item.estA.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainA.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predA} (D-${item.daysA})<br>
                         2번(B): <b>${item.hasHeliumData ? item.estB.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainB.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predB} (D-${item.daysB})<br>
                         관리소 우선 교체예정일: <b>${item.heliumPredDate}</b> ${item.hasHeliumData ? `(D-${item.heliumTotalDays})` : '(압력 기록 필요)'}<br>
+                        ${item.hasHeliumData ? `<span class="due-bottle-note">🎯 기준 용기: <b>${item.dueBottleLabel}</b></span><br>` : ''}
                         ${item.hasHeliumData ? (item.usableBottleCount > 0
                             ? `<span class="usable-note">✅ 사용 가능 용기 있음 (${item.usableBottleNames.join(', ')} · ${item.usableBottleCount}개)</span>`
                             : `<span class="unavailable-note">⛔ 사용 가능 용기 없음</span>`) : ''}<br>
