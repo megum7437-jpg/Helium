@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎈 헬륨 & 표준가스 매니저 v5.3</title>
+    <title>🎈 헬륨 & 표준가스 통합관리 v6.2</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -24,7 +24,25 @@
             margin: 0;
             padding: 12px;
         }
-        .max-width-container { max-width: 600px; margin: 0 auto; }
+        .max-width-container { max-width: 920px; margin: 0 auto; }
+        .hero { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:4px 0 12px; }
+        .hero h1 { text-align:left; margin:0; }
+        .subtitle { font-size:12px; color:#64748b; margin-top:4px; }
+        .hero-actions { display:flex; gap:6px; min-width:250px; }
+        .btn-secondary { background:#334155; padding:9px 10px; font-size:12px; }
+        .sync-status { font-size:11px; text-align:right; color:#64748b; margin:-8px 2px 10px; }
+        .toolbar { display:grid; grid-template-columns:1fr 150px 150px; gap:7px; margin-bottom:10px; }
+        .summary-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin-bottom:12px; }
+        .summary-mini { background:#fff; border:1px solid #e2e8f0; border-radius:8px; padding:9px; text-align:center; }
+        .summary-mini b { display:block; font-size:18px; color:#1e3a8a; margin-top:3px; }
+        .overview-mode .input-card { display:none; }
+        .overview-mode .max-width-container { max-width:1200px; }
+        .overview-mode .station-item { padding:13px 4px; }
+        .overview-mode .station-name { font-size:17px; }
+        .overview-mode .station-meta { font-size:13px; }
+        .overview-mode .hero-actions button:first-child { background:#ef4444; }
+        .priority-rank { display:inline-flex; width:22px; height:22px; border-radius:50%; align-items:center; justify-content:center; background:#e2e8f0; color:#334155; font-size:11px; margin-right:5px; }
+        @media(max-width:700px){ .hero{flex-direction:column;align-items:stretch}.hero-actions{min-width:0}.toolbar{grid-template-columns:1fr}.summary-strip{grid-template-columns:repeat(2,1fr)} }
         h1 { font-size: 20px; text-align: center; color: #1e3a8a; margin: 8px 0 16px 0; }
         h2 { font-size: 16px; border-bottom: 2px solid var(--border); padding-bottom: 6px; margin-top: 0; margin-bottom: 12px; color: #1e40af; }
         .card {
@@ -86,12 +104,34 @@
         .history-box { max-height: 120px; overflow-y: auto; font-size: 12px; margin-top: 6px; border: 1px solid #e2e8f0; padding: 6px; border-radius: 4px;}
         .history-item { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px dashed #e2e8f0; }
         .chart-wrap { height: 160px; margin-top: 6px; }
+    
+        .ops-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+        .ops-list { font-size:13px; line-height:1.65; }
+        .ops-item { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px dashed #e2e8f0; }
+        .ops-item:last-child { border-bottom:none; }
+        .quick-actions { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px; }
+        .btn-light { background:#e2e8f0; color:#1e293b; }
+        .usable-note { color:#047857; font-weight:700; }
+        .unavailable-note { color:#b91c1c; font-weight:700; }
+        .today-chip { display:inline-block; padding:3px 7px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-size:11px; font-weight:bold; }
+        .empty-note { color:#94a3b8; text-align:center; padding:12px; }
+        @media(max-width:700px){ .ops-grid{grid-template-columns:1fr}.station-item{align-items:flex-start}.station-meta{font-size:11.5px}.badge{min-width:54px}.quick-actions{grid-template-columns:1fr} }
     </style>
 </head>
 <body>
 
 <div class="max-width-container">
-    <h1>🎈 헬륨 & 표준가스 매니저 v5.3</h1>
+    <div class="hero">
+        <div>
+            <h1>🎈 헬륨 & 표준가스 통합관리 v6.2</h1>
+            <div class="subtitle">24개 관리소 실시간 운영현황 · 1 MPa 도달예측 · 교체계획 자동화</div>
+        </div>
+        <div class="hero-actions">
+            <button class="btn-secondary" onclick="toggleOverview(this)">📊 종합현황</button>
+            <button class="btn-secondary" onclick="exportCSV()">📥 CSV 내보내기</button>
+        </div>
+    </div>
+    <div id="syncStatus" class="sync-status">데이터 연결 확인 중...</div>
 
     <div class="card" style="background: #f8fafc; border: 1px solid #cbd5e1;">
         <h2>🔍 실시간 가스 유형별 현황</h2>
@@ -116,7 +156,18 @@
         </div>
     </div>
 
-    <div class="card">
+    <div class="ops-grid">
+        <div class="card">
+            <h2>📅 30일 이내 교체계획</h2>
+            <div id="monthlyPlan" class="ops-list"></div>
+        </div>
+        <div class="card">
+            <h2>🕘 최근 변경사항</h2>
+            <div id="recentChanges" class="ops-list"></div>
+        </div>
+    </div>
+
+    <div class="card input-card">
         <h2>✍️ 가스 측정 기록 및 설정 입력</h2>
         <div class="form-row">
             <div class="form-group">
@@ -156,7 +207,7 @@
 
         <div class="form-group" id="pressureGroup">
             <label id="pressureLabel">현재 용기 압력 (MPa)</label>
-            <input type="number" id="pressure" step="0.01" placeholder="예: 13.50">
+            <input type="number" id="pressure" min="0" max="14.5" step="0.01" placeholder="예: 12.00">
         </div>
 
         <div class="radio-set">
@@ -166,6 +217,10 @@
         </div>
 
         <button onclick="saveData()">클라우드 데이터베이스 저장</button>
+        <div class="quick-actions">
+            <button class="btn-light" onclick="setNewCylinder()">✨ 새 용기 12 MPa 입력</button>
+            <button class="btn-light" onclick="setToday()">📅 오늘 날짜로 설정</button>
+        </div>
         
         <div style="margin-top: 10px;">
             <label>선택된 관리소 교체/측정 이력 (최신순)</label>
@@ -175,6 +230,21 @@
 
     <div class="card">
         <h2>📊 전체 24개 관리소 종합 현황판</h2>
+        <div class="summary-strip">
+            <div class="summary-mini">교체 긴급<b id="sumUrgent">0</b></div>
+            <div class="summary-mini">30일 이내<b id="sumWarning">0</b></div>
+            <div class="summary-mini">정상 운영<b id="sumNormal">0</b></div>
+            <div class="summary-mini">데이터 미입력<b id="sumMissing">24</b></div>
+        </div>
+        <div class="toolbar">
+            <input id="stationSearch" placeholder="🔎 관리소 검색" oninput="updateUI()">
+            <select id="statusFilter" onchange="updateUI()">
+                <option value="all">전체 상태</option><option value="urgent">15일 이내</option><option value="warning">30일 이내</option><option value="normal">정상</option><option value="missing">미입력</option>
+            </select>
+            <select id="analyzerFilter" onchange="updateUI()">
+                <option value="all">전체 분석기</option><option>RMG</option><option>ABB</option><option>Elster</option><option>Emerson</option><option>StandardGas</option>
+            </select>
+        </div>
         <div id="statusList"></div>
     </div>
 </div>
@@ -232,9 +302,13 @@
                 });
                 updateUI();
                 loadDetails();
+                document.getElementById('syncStatus').textContent = '☁️ Firebase 동기화 완료 · ' + new Date().toLocaleString('ko-KR');
             }, (error) => {
                 console.warn("클라우드 데이터를 불러오지 못했습니다.", error);
+                document.getElementById('syncStatus').textContent = '⚠️ 클라우드 연결 실패 · 로컬 화면 모드';
             });
+        } else {
+            document.getElementById('syncStatus').textContent = '⚠️ 외부 스크립트 차단 · 로컬 화면 모드';
         }
     };
 
@@ -305,6 +379,7 @@
 
         if(!date) return alert('날짜를 지정해 주세요.');
         if(type !== 'S' && !pVal) return alert('압력을 입력해 주세요.');
+        if(type !== 'S' && (Number(pVal) < 0 || Number(pVal) > 14.5)) return alert('압력은 0~14.5 MPa 범위로 입력해 주세요.');
         if(type === 'S') pVal = "0";
 
         const obj = { date, pressure: parseFloat(pVal), isReplace };
@@ -341,7 +416,7 @@
         loadDetails();
     }
 
-    // v5.3: 1 MPa 최소운전압력 기준 병렬 헬륨 추적 및 표준가스 D-Day 연산
+    // v6.0: 1 MPa 최소운전압력 기준 병렬 헬륨 추적 및 표준가스 D-Day 연산
     function parseCalculation(st) {
         const data = localDB[st];
         const anz = data.analyzer;
@@ -351,8 +426,8 @@
         const MIN_PRESSURE = 1.0;
         
         let maxDays = anz === "Emerson" ? 90 : 365;
-        // 새 용기 14 MPa에서 최소운전압력 1 MPa까지의 기본 소진율
-        let defRate = (14.0 - MIN_PRESSURE) / maxDays;
+        // 새 용기 12 MPa에서 최소운전압력 1 MPa까지의 기본 소진율
+        let defRate = (12.0 - MIN_PRESSURE) / maxDays;
 
         function toLocalDate(dateString) {
             const [y, m, d] = dateString.split('-').map(Number);
@@ -416,14 +491,22 @@
         const activeBottles = [bottleA, bottleB].filter(b => b.hasData);
         const hasHeliumData = activeBottles.length > 0;
 
-        // 병렬운전은 두 용기가 동시에 소모되므로 잔여일을 단순 합산하지 않는다.
-        // 전체 잔여압력 합계를 전체 소진율 합계로 나누어 1 MPa 도달일을 산정한다.
-        const totalRemainingMpa = activeBottles.reduce((sum, b) => sum + b.remainingMpa, 0);
-        const totalRate = activeBottles.reduce((sum, b) => sum + b.rate, 0);
-        const heliumTotalDays = hasHeliumData && totalRate > 0
-            ? Math.max(0, Math.ceil(totalRemainingMpa / totalRate))
+        // 실제 교체예정일은 A/B 용기 중 먼저 1 MPa에 도달하는 날짜를 적용한다.
+        // 두 용기의 잔여압력을 합산한 평균성 날짜를 사용하면, 먼저 소진되는 용기의
+        // 교체시점을 늦게 표시할 수 있으므로 안전한 실무 기준으로 통일한다.
+        const heliumTotalDays = hasHeliumData
+            ? Math.min(...activeBottles.map(b => b.days))
             : 0;
         const heliumPredDate = hasHeliumData ? addDays(today, heliumTotalDays) : '-';
+
+        // 교체주기 도래 여부와 별도로, 현재 1 MPa 초과로 사용 가능한 용기 수를 계산한다.
+        // 한 용기가 먼저 1 MPa에 도달해도 다른 용기가 사용 가능하면 운전 가능 상태를 함께 안내한다.
+        const usableBottleCount = activeBottles.filter(b => b.days > 0 && b.estimatedPressure > MIN_PRESSURE).length;
+        const usableBottleNames = [
+            bottleA.hasData && bottleA.days > 0 && bottleA.estimatedPressure > MIN_PRESSURE ? 'A' : null,
+            bottleB.hasData && bottleB.days > 0 && bottleB.estimatedPressure > MIN_PRESSURE ? 'B' : null
+        ].filter(Boolean);
+        const replacementDue = hasHeliumData && heliumTotalDays <= 0;
 
         // 2. 표준가스 수명 연산 (보증 기한 2년 준수 여부)
         let standardDaysLeft = 730;
@@ -445,11 +528,12 @@
 
         return {
             anz, hasHeliumData, heliumTotalDays, heliumPredDate,
+            usableBottleCount, usableBottleNames, replacementDue,
             daysA:bottleA.days, daysB:bottleB.days,
             predA:bottleA.targetDate, predB:bottleB.targetDate,
             remainA:bottleA.remainingMpa, remainB:bottleB.remainingMpa,
             standardDaysLeft, sPredDate,
-            pA:bottleA.pressure, pB:bottleB.pressure
+            pA:bottleA.pressure, pB:bottleB.pressure, estA:bottleA.estimatedPressure||0, estB:bottleB.estimatedPressure||0
         };
     }
 
@@ -464,6 +548,16 @@
 
         let hOk = 0, sOk = 0;
         let listArr = STATIONS.map(name => ({ name, ...parseCalculation(name) }));
+        let urgent=0, warning=0, normal=0, missing=0;
+        listArr.forEach(x => { if(!x.hasHeliumData) missing++; else if(x.heliumTotalDays<=15) urgent++; else if(x.heliumTotalDays<=30) warning++; else normal++; });
+        document.getElementById('sumUrgent').textContent=urgent;
+        document.getElementById('sumWarning').textContent=warning;
+        document.getElementById('sumNormal').textContent=normal;
+        document.getElementById('sumMissing').textContent=missing;
+        renderOperations(listArr);
+        const q=(document.getElementById('stationSearch')?.value||'').trim().toLowerCase();
+        const sf=document.getElementById('statusFilter')?.value||'all';
+        const af=document.getElementById('analyzerFilter')?.value||'all';
 
         // 알림 판단 및 대시보드 스코어 집계
         listArr.forEach(item => {
@@ -475,7 +569,7 @@
                 hAlertBox.style.display = 'block';
                 hAlertList.innerHTML += `<div style="display:flex; justify-content:space-between; padding:2px 0;">
                     <span><b>${item.name}</b> (${item.anz})</span>
-                    <span>⚠️ <b>1 MPa 도달 D-${item.heliumTotalDays}</b> (${item.heliumPredDate})</span>
+                    <span>⚠️ <b>1 MPa 도달 D-${item.heliumTotalDays}</b> (${item.heliumPredDate}) · ${item.usableBottleCount > 0 ? `사용 가능 ${item.usableBottleNames.join(', ')}` : '사용 가능 용기 없음'}</span>
                 </div>`;
             }
             if(item.standardDaysLeft <= 60) {
@@ -499,7 +593,12 @@
             return a.heliumTotalDays - b.heliumTotalDays;
         });
 
-        listArr.forEach(item => {
+        listArr = listArr.filter(item => {
+            const status = !item.hasHeliumData ? 'missing' : item.heliumTotalDays<=15 ? 'urgent' : item.heliumTotalDays<=30 ? 'warning' : 'normal';
+            return (!q || item.name.toLowerCase().includes(q)) && (sf==='all' || sf===status) && (af==='all' || af===item.anz);
+        });
+
+        listArr.forEach((item, rank) => {
             const itemDiv = document.createElement('div');
             itemDiv.className = 'station-item';
             
@@ -512,11 +611,14 @@
 
             itemDiv.innerHTML = `
                 <div class="station-info" onclick="selectStation('${item.name}')">
-                    <div class="station-name">${item.name} <span class="tag tag-${item.anz}">${item.anz}</span></div>
+                    <div class="station-name"><span class="priority-rank">${rank+1}</span>${item.name} <span class="tag tag-${item.anz}">${item.anz}</span></div>
                     <div class="station-meta">
-                        1번(A): <b>${item.pA} MPa</b> · 잔여 ${item.remainA.toFixed(2)} MPa · 1 MPa 도달 ${item.predA} (D-${item.daysA})<br>
-                        2번(B): <b>${item.pB} MPa</b> · 잔여 ${item.remainB.toFixed(2)} MPa · 1 MPa 도달 ${item.predB} (D-${item.daysB})<br>
-                        관리소 교체예정일: <b>${item.heliumPredDate}</b> ${item.hasHeliumData ? `(D-${item.heliumTotalDays})` : '(압력 기록 필요)'}<br>
+                        1번(A): <b>${item.hasHeliumData ? item.estA.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainA.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predA} (D-${item.daysA})<br>
+                        2번(B): <b>${item.hasHeliumData ? item.estB.toFixed(2) : '-'} MPa</b> · 잔여 ${item.remainB.toFixed(2)} MPa · 개별 1 MPa 도달 ${item.predB} (D-${item.daysB})<br>
+                        관리소 우선 교체예정일: <b>${item.heliumPredDate}</b> ${item.hasHeliumData ? `(D-${item.heliumTotalDays})` : '(압력 기록 필요)'}<br>
+                        ${item.hasHeliumData ? (item.usableBottleCount > 0
+                            ? `<span class="usable-note">✅ 사용 가능 용기 있음 (${item.usableBottleNames.join(', ')} · ${item.usableBottleCount}개)</span>`
+                            : `<span class="unavailable-note">⛔ 사용 가능 용기 없음</span>`) : ''}<br>
                         표준가스 유효기간 만료일: <b>${item.sPredDate}</b>
                     </div>
                 </div>
@@ -527,6 +629,64 @@
             `;
             listDiv.appendChild(itemDiv);
         });
+    }
+
+    function renderOperations(listArr) {
+        const monthly = document.getElementById('monthlyPlan');
+        const recent = document.getElementById('recentChanges');
+        if(!monthly || !recent) return;
+        const due = listArr.filter(x => x.hasHeliumData && x.heliumTotalDays <= 30)
+            .sort((a,b)=>a.heliumTotalDays-b.heliumTotalDays);
+        monthly.innerHTML = due.length ? due.map(x => `
+            <div class="ops-item"><span><b>${x.name}</b> <span class="tag tag-${x.anz}">${x.anz}</span></span>
+            <span>${x.heliumPredDate} · <b>D-${x.heliumTotalDays}</b></span></div>`).join('')
+            : '<div class="empty-note">30일 이내 교체 예정 관리소가 없습니다.</div>';
+
+        let changes=[];
+        STATIONS.forEach(name => {
+            const d=localDB[name]||{};
+            [['A','1번 용기',d.historyA],['B','2번 용기',d.historyB],['S','표준가스',d.historyS]].forEach(([origin,label,h]) => {
+                (h||[]).forEach(item => changes.push({name,label,origin,...item}));
+            });
+        });
+        changes.sort((a,b)=>new Date(b.date)-new Date(a.date));
+        recent.innerHTML = changes.length ? changes.slice(0,6).map(x => `
+            <div class="ops-item"><span><b>${x.name}</b> · ${x.label}${x.isReplace?' 교체':' 점검'}</span>
+            <span><span class="today-chip">${x.date}</span>${x.origin!=='S'?` · ${x.pressure} MPa`:''}</span></div>`).join('')
+            : '<div class="empty-note">등록된 변경 이력이 없습니다.</div>';
+    }
+
+    function setNewCylinder() {
+        const type=document.getElementById('targetBottle').value;
+        if(type==='S') return alert('표준가스는 압력 입력 대상이 아닙니다.');
+        document.getElementById('pressure').value='12.00';
+        document.getElementById('isReplace').checked=true;
+        setToday();
+    }
+
+    function setToday() {
+        const d=new Date();
+        const local=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+        document.getElementById('checkDate').value=local;
+    }
+
+    function toggleOverview(button) {
+        document.body.classList.toggle('overview-mode');
+        const on = document.body.classList.contains('overview-mode');
+        button.textContent = on ? '↩️ 입력화면 보기' : '📊 종합현황';
+        window.scrollTo({top:0, behavior:'smooth'});
+    }
+
+    function csvSafe(v) { return `"${String(v ?? '').replaceAll('"','""')}"`; }
+    function exportCSV() {
+        const rows = [['관리소','분석기','A 최근압력(MPa)','B 최근압력(MPa)','A 잔여(MPa)','B 잔여(MPa)','통합 잔여일','교체예정일','표준가스 만료일']];
+        STATIONS.forEach(name => {
+            const x=parseCalculation(name);
+            rows.push([name,x.anz,x.pA,x.pB,x.remainA.toFixed(2),x.remainB.toFixed(2),x.hasHeliumData?x.heliumTotalDays:'미입력',x.heliumPredDate,x.sPredDate]);
+        });
+        const csv='\uFEFF'+rows.map(r=>r.map(csvSafe).join(',')).join('\r\n');
+        const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`헬륨_표준가스_현황_${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
     }
 
     function selectStation(name) {
