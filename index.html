@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎈 헬륨 & 표준가스 통합관리 v6.7</title>
+    <title>🎈 헬륨 & 표준가스 통합관리 v7.0</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -42,7 +42,21 @@
         .overview-mode .station-meta { font-size:13px; }
         .overview-mode .hero-actions button:first-child { background:#ef4444; }
         .priority-rank { display:inline-flex; width:22px; height:22px; border-radius:50%; align-items:center; justify-content:center; background:#e2e8f0; color:#334155; font-size:11px; margin-right:5px; }
-        @media(max-width:700px){ .hero{flex-direction:column;align-items:stretch}.hero-actions{min-width:0}.toolbar{grid-template-columns:1fr}.summary-strip{grid-template-columns:repeat(2,1fr)} }
+        @media(max-width:700px){
+            .hero{flex-direction:column;align-items:stretch}
+            .hero-actions{min-width:0}
+            .toolbar{grid-template-columns:1fr}
+            .summary-strip{grid-template-columns:repeat(2,1fr)}
+            .mobile-stack-row{display:grid !important;grid-template-columns:1fr !important;gap:12px !important;margin-top:12px !important}
+            .mobile-stack-row .form-group{width:100%;min-width:0}
+            .mobile-stack-row label{font-size:13px;margin-bottom:5px}
+            .mobile-stack-row select,.mobile-stack-row input{min-height:46px;font-size:15px}
+            .active-help{font-size:11.5px !important;line-height:1.35;margin-top:5px !important}
+            .helium-alert-item{display:flex !important;align-items:center;justify-content:space-between;gap:12px;padding:9px 0 !important;border-bottom:1px dashed rgba(155,44,44,.18)}
+            .helium-alert-item:last-child{border-bottom:none}
+            .helium-alert-station{font-size:15px;font-weight:800;white-space:nowrap}
+            .helium-alert-status{font-size:14px;font-weight:800;text-align:right;white-space:nowrap}
+        }
         h1 { font-size: 20px; text-align: center; color: #1e3a8a; margin: 8px 0 16px 0; }
         h2 { font-size: 16px; border-bottom: 2px solid var(--border); padding-bottom: 6px; margin-top: 0; margin-bottom: 12px; color: #1e40af; }
         .card {
@@ -62,7 +76,11 @@
         .alert-zone { border-radius: 8px; padding: 10px; margin-bottom: 12px; font-size: 13px; }
         .alert-h-zone { background-color: #fff5f5; border: 1px solid #feb2b2; color: #9b2c2c; margin-bottom: 6px; }
         .alert-s-zone { background-color: #fffaf0; border: 1px solid #fbd38d; color: #dd6b20; }
-        .alert-title { font-weight: bold; margin-bottom: 4px; border-bottom: 1px dashed rgba(0,0,0,0.1); padding-bottom: 2px; }
+        .alert-title { font-weight: bold; margin-bottom: 4px; border-bottom: 1px dashed rgba(0,0,0,0.1); padding-bottom: 6px; }
+        .helium-alert-item { display:flex; justify-content:space-between; align-items:center; gap:14px; padding:7px 0; }
+        .helium-alert-station { font-weight:800; }
+        .helium-alert-status { font-weight:800; text-align:right; }
+        .active-help { font-size:12px; color:#64748b; margin-top:5px; }
 
         /* 폼 요소 스타일 */
         .form-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -124,7 +142,7 @@
 <div class="max-width-container">
     <div class="hero">
         <div>
-            <h1>🎈 헬륨 & 표준가스 통합관리 v6.7</h1>
+            <h1>🎈 헬륨 & 표준가스 통합관리 v7.0</h1>
             <div class="subtitle">24개 관리소 실시간 운영현황 · 1 MPa 도달예측 · 교체 우선순위 관리</div>
         </div>
         <div class="hero-actions">
@@ -180,25 +198,25 @@
             <canvas id="historyChart"></canvas>
         </div>
 
-        <div class="form-row" style="margin-top:10px;">
+        <div class="form-row mobile-stack-row" style="margin-top:10px;">
             <div class="form-group">
-                <label>점검/설치 일자</label>
+                <label>점검일</label>
                 <input type="date" id="checkDate">
             </div>
             <div class="form-group" id="activeBottleWrap">
-                <label>현재 사용 중인 헬륨 용기</label>
+                <label>사용 중인 헬륨</label>
                 <select id="activeBottleSelect" onchange="changeActiveBottle()">
-                    <option value="A">1번(A) 용기 사용 중</option>
-                    <option value="B">2번(B) 용기 사용 중</option>
+                    <option value="A">1번(A) 사용 중</option>
+                    <option value="B">2번(B) 사용 중</option>
                 </select>
-                <div style="font-size:12px;color:#64748b;margin-top:5px;">교체예정일·D-Day·우선순위는 사용 중 용기를 기준으로 계산합니다.</div>
+                <div class="active-help">※ 사용 중 용기 기준으로 D-Day를 계산합니다.</div>
             </div>
             <div class="form-group" id="targetBottleWrap">
-                <label>입력 대상 선택</label>
+                <label>입력 용기</label>
                 <select id="targetBottle">
-                    <option value="A">🎈 1번 헬륨 용기(A)</option>
-                    <option value="B">🎈 2번 헬륨 용기(B)</option>
-                    <option value="S">🧪 표준가스 (수명관리용)</option>
+                    <option value="A">🎈 1번(A) 헬륨</option>
+                    <option value="B">🎈 2번(B) 헬륨</option>
+                    <option value="S">🧪 표준가스</option>
                 </select>
             </div>
         </div>
@@ -603,9 +621,9 @@
             // 긴급 인덱스 자동 표출 조건문
             if(item.hasHeliumData && item.heliumTotalDays <= 30) {
                 hAlertBox.style.display = 'block';
-                hAlertList.innerHTML += `<div style="display:flex; justify-content:space-between; padding:2px 0;">
-                    <span><b>${item.name}</b> (${item.anz})</span>
-                    <span>⚠️ <b>사용 중 ${item.activeBottleCode}용기 D-${item.heliumTotalDays}</b> (${item.heliumPredDate}) · ${item.standbyStatus}</span>
+                hAlertList.innerHTML += `<div class="helium-alert-item">
+                    <span class="helium-alert-station">📍 ${item.name}</span>
+                    <span class="helium-alert-status">⚠️ 사용 중 ${item.activeBottleCode} D-${Math.max(0, item.heliumTotalDays)}</span>
                 </div>`;
             }
             if(item.standardDaysLeft <= 60) {
