@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎈 헬륨 & 표준가스 통합관리 v6.2</title>
+    <title>🎈 헬륨 & 표준가스 통합관리 v6.3</title>
     
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
@@ -123,8 +123,8 @@
 <div class="max-width-container">
     <div class="hero">
         <div>
-            <h1>🎈 헬륨 & 표준가스 통합관리 v6.2</h1>
-            <div class="subtitle">24개 관리소 실시간 운영현황 · 1 MPa 도달예측 · 교체계획 자동화</div>
+            <h1>🎈 헬륨 & 표준가스 통합관리 v6.3</h1>
+            <div class="subtitle">24개 관리소 실시간 운영현황 · 1 MPa 도달예측 · 교체 우선순위 관리</div>
         </div>
         <div class="hero-actions">
             <button class="btn-secondary" onclick="toggleOverview(this)">📊 종합현황</button>
@@ -153,17 +153,6 @@
         <div id="s_alert_box" class="alert-zone alert-s-zone" style="display:none;">
             <div class="alert-title">⏳ 표준가스 보증 만료 임박 (60일 이내 만료)</div>
             <div id="s_alert_list"></div>
-        </div>
-    </div>
-
-    <div class="ops-grid">
-        <div class="card">
-            <h2>📅 30일 이내 교체계획</h2>
-            <div id="monthlyPlan" class="ops-list"></div>
-        </div>
-        <div class="card">
-            <h2>🕘 최근 변경사항</h2>
-            <div id="recentChanges" class="ops-list"></div>
         </div>
     </div>
 
@@ -470,10 +459,11 @@
                 }
             }
 
-            const elapsed = Math.max(0, Math.floor((today - toLocalDate(latest.date)) / DAY_MS));
-            const estimatedPressure = Math.max(MIN_PRESSURE, Number(latest.pressure) - rate * elapsed);
+            // 가장 최근에 입력한 압력을 현재 확인압력으로 사용한다.
+            // 기록일 경과분을 다시 차감하면 동일 소모량이 중복 반영되어 D-Day가 0으로 쏠릴 수 있다.
+            const estimatedPressure = Math.max(0, Number(latest.pressure));
             const remainingMpa = Math.max(0, estimatedPressure - MIN_PRESSURE);
-            const days = Math.max(0, Math.ceil(remainingMpa / rate));
+            const days = rate > 0 ? Math.max(0, Math.ceil(remainingMpa / rate)) : 0;
 
             return {
                 hasData:true,
@@ -554,7 +544,6 @@
         document.getElementById('sumWarning').textContent=warning;
         document.getElementById('sumNormal').textContent=normal;
         document.getElementById('sumMissing').textContent=missing;
-        renderOperations(listArr);
         const q=(document.getElementById('stationSearch')?.value||'').trim().toLowerCase();
         const sf=document.getElementById('statusFilter')?.value||'all';
         const af=document.getElementById('analyzerFilter')?.value||'all';
@@ -629,31 +618,6 @@
             `;
             listDiv.appendChild(itemDiv);
         });
-    }
-
-    function renderOperations(listArr) {
-        const monthly = document.getElementById('monthlyPlan');
-        const recent = document.getElementById('recentChanges');
-        if(!monthly || !recent) return;
-        const due = listArr.filter(x => x.hasHeliumData && x.heliumTotalDays <= 30)
-            .sort((a,b)=>a.heliumTotalDays-b.heliumTotalDays);
-        monthly.innerHTML = due.length ? due.map(x => `
-            <div class="ops-item"><span><b>${x.name}</b> <span class="tag tag-${x.anz}">${x.anz}</span></span>
-            <span>${x.heliumPredDate} · <b>D-${x.heliumTotalDays}</b></span></div>`).join('')
-            : '<div class="empty-note">30일 이내 교체 예정 관리소가 없습니다.</div>';
-
-        let changes=[];
-        STATIONS.forEach(name => {
-            const d=localDB[name]||{};
-            [['A','1번 용기',d.historyA],['B','2번 용기',d.historyB],['S','표준가스',d.historyS]].forEach(([origin,label,h]) => {
-                (h||[]).forEach(item => changes.push({name,label,origin,...item}));
-            });
-        });
-        changes.sort((a,b)=>new Date(b.date)-new Date(a.date));
-        recent.innerHTML = changes.length ? changes.slice(0,6).map(x => `
-            <div class="ops-item"><span><b>${x.name}</b> · ${x.label}${x.isReplace?' 교체':' 점검'}</span>
-            <span><span class="today-chip">${x.date}</span>${x.origin!=='S'?` · ${x.pressure} MPa`:''}</span></div>`).join('')
-            : '<div class="empty-note">등록된 변경 이력이 없습니다.</div>';
     }
 
     function setNewCylinder() {
