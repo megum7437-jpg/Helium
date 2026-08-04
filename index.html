@@ -185,10 +185,10 @@
             <div class="form-group">
                 <label>장비 분석기 종류</label>
                 <select id="analyzerSelect" onchange="changeAnalyzer()">
-                    <option value="RMG">RMG (헬륨 1년 한도)</option>
-                    <option value="ABB">ABB (헬륨 1년 한도)</option>
-                    <option value="Elster">Elster (헬륨 1년 한도)</option>
-                    <option value="Emerson">Emerson (헬륨 3개월 한도)</option>
+                    <option value="RMG">RMG(헬륨 16개월 사용)</option>
+                    <option value="ABB">ABB(헬륨 16개월 사용)</option>
+                    <option value="Elster">Elster(헬륨 16개월 사용)</option>
+                    <option value="Emerson">Emerson(헬륨 6개월 사용)</option>
                     <option value="StandardGas">🧪 표준가스 (2년 고정 유효)</option>
                 </select>
             </div>
@@ -455,8 +455,9 @@
         const DAY_MS = 1000 * 60 * 60 * 24;
         const MIN_PRESSURE = 1.0;
 
-        let maxDays = anz === "Emerson" ? 90 : 365;
-        // 새 용기 12 MPa에서 최소운전압력 1 MPa까지의 기본 소진율
+        let maxDays = anz === "Emerson" ? 180 : 480;
+        // 새 용기 12 MPa에서 최소운전압력 1 MPa까지의 제작사별 기본 소진율
+        // Emerson: 180일(6개월), RMG/ABB/Elster: 480일(16개월)
         let defRate = (12.0 - MIN_PRESSURE) / maxDays;
 
         function formatDate(date) {
